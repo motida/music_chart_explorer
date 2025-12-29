@@ -1,0 +1,83 @@
+from openai import OpenAI
+
+import os
+
+
+from database import get_connection
+
+
+def get_sql_from_llm(question, schema_context, limit, max_retries=5):
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    client = OpenAI(api_key=api_key)
+
+    # Allow overriding max_retries via env var
+    max_retries = int(os.environ.get("SQL_MAX_RETRIES", max_retries))
+
+    system_prompt = f"""
+    You are a PostgreSQL expert. Convert the user's natural language question into a valid SQL query.
+    
+    Context:
+    {schema_context}
+    
+    Rules:
+    1. Return ONLY the SQL query. No markdown, no explanations.
+    2. Use the full table names provided in the context (e.g., charts.uk_singles_prestreaming_raw).
+    3. Be careful with string matching - use ILIKE for case-insensitive searches and remember all text data is UPPERCASE.
+    4. Limit results to {limit} unless specified otherwise by the user.
+    5. Always select `artist`, `title`, and context columns if available (e.g., `peak_position`, `weeks_in_chart`, `weeks_at_top` for rankings; `position`, `from_date` for raw charts).
+    6. DATE LOGIC: Charts are weekly. If the user asks about a specific date, find the week containing it:
+       - CORRECT: `WHERE '1980-01-01' BETWEEN from_date AND to_date`
+       - WRONG: `WHERE from_date = '1980-01-01'`
+    """
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question},
+    ]
+
+    last_error = None
+
+    for attempt in range(max_retries):
+        response = client.chat.completions.create(
+            model=os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo"),
+            messages=messages,
+            temperature=0,
+        )
+
+        sql_query = response.choices[0].message.content.strip()
+        # Basic cleanup
+        cleaned_sql = sql_query.replace("```sql", "").replace("```", "").strip()
+
+        # Validation Step
+        conn = get_connection()
+        if not conn:
+            # If DB is unavailable, we cannot validate. Return what we have.
+            return cleaned_sql
+
+        try:
+            with conn.cursor() as cur:
+                # EXPLAIN parses and plans the query without executing it, checking for syntax/schema errors
+                cur.execute(f"EXPLAIN {cleaned_sql}")
+
+            # If we get here, SQL is valid
+            return cleaned_sql
+
+        except Exception as e:
+            # Important: Rollback the transaction if EXPLAIN failed,
+            # otherwise the connection remains in an aborted state.
+            conn.rollback()
+            last_error = str(e)
+            # Feedback to LLM
+            messages.append({"role": "assistant", "content": sql_query})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"The previous query was invalid and returned this error: {last_error}. Please provide a corrected SQL query following the original rules.",
+                }
+            )
+            # Continue to next iteration
+
+    # If retries exhausted
+    raise Exception(
+        f"Failed to generate valid SQL after {max_retries} attempts. Last error: {last_error}"
+    )
