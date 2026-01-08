@@ -4,6 +4,7 @@ import os
 import plotly.express as px
 from database import get_connection
 from ai_client import get_sql_from_llm
+from artwork_client import get_artwork_url
 from styles import apply_retro_style
 from dotenv import load_dotenv
 from schema_definitions import SCHEMA_RAW, SCHEMA_RANKINGS
@@ -217,21 +218,40 @@ if submit_button and question:
                     weeks_on_chart = len(hist_df)
                     first_entry = hist_df["from_date"].iloc[0]
 
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric(
-                        "Peak Position",
-                        f"#{peak_pos}",
-                        delta=None,
-                        help="Best position reached",
-                    )
-                    m2.metric(
-                        "Weeks on Chart",
-                        f"{weeks_on_chart}",
-                        help="Total weeks in top 100",
-                    )
-                    m3.metric(
-                        "First Entry", f"{first_entry}", help="Date first entered chart"
-                    )
+                    # Fetch Artwork
+                    artwork_url = get_artwork_url(artist_name, song_title)
+
+                    # Layout: Artwork + Metrics
+                    col_art, col_metrics = st.columns([1, 3])
+
+                    with col_art:
+                        if artwork_url:
+                            st.image(
+                                artwork_url,
+                                caption=f"{artist_name} - {song_title}",
+                                use_container_width=True,
+                            )
+                        else:
+                            st.info("No artwork found")
+
+                    with col_metrics:
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric(
+                            "Peak Position",
+                            f"#{peak_pos}",
+                            delta=None,
+                            help="Best position reached",
+                        )
+                        m2.metric(
+                            "Weeks on Chart",
+                            f"{weeks_on_chart}",
+                            help="Total weeks in top 100",
+                        )
+                        m3.metric(
+                            "First Entry",
+                            f"{first_entry}",
+                            help="Date first entered chart",
+                        )
 
                     # Correct Data Gaps for Plotting
                     # Ensure properly formatted dates
