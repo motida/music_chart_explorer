@@ -21,3 +21,5 @@ Columns:
 - weeks_at_top (bigint): Number of weeks at position 1.
 - weeks_in_chart (bigint): Total weeks spent on the chart.
 """
+
+SCHEMA_ALL = SCHEMA_RAW + "\n" + SCHEMA_RANKINGS

@@ -7,7 +7,7 @@ from ai_client import get_sql_from_llm
 from artwork_client import get_artwork_url
 from styles import apply_retro_style
 from dotenv import load_dotenv
-from schema_definitions import SCHEMA_RAW, SCHEMA_RANKINGS
+from schema_definitions import SCHEMA_ALL, SCHEMA_RAW, SCHEMA_RANKINGS
 
 # Load environment variables from .env file
 load_dotenv()
@@ -85,13 +85,9 @@ if submit_button and question:
         st.error("Please provide an OpenAI API Key.")
         st.stop()
 
-    # Intelligent Routing
-    lower_q = question.lower()
-    if any(k in lower_q for k in ["all-time", "top", "best", "most", "rank", "total"]):
-        schema_context = SCHEMA_RANKINGS
-
-    else:
-        schema_context = SCHEMA_RAW
+    # Intelligent Routing - DEPRECATED
+    # Now we send the full context to the LLM and let it decide.
+    schema_context = SCHEMA_ALL
 
     # Generate SQL
     with st.spinner("Generating SQL..."):
