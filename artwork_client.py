@@ -1,13 +1,14 @@
 import requests
 import streamlit as st
-import time
 
 # User Agent is required by MusicBrainz API
 # See: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
 USER_AGENT = "MusicChartExplorer/1.0 ( motigpt@example.com )"
 
 
-@st.cache_data(show_spinner=False, ttl=3600 * 24)
+@st.cache_data(
+    show_spinner=False, ttl=3600 * 24 * 7
+)  # Increased TTL, invalidates previous cache
 def get_artwork_url(artist: str, title: str) -> str:
     """
     Fetches the URL of the album artwork for a given artist and song title
@@ -75,7 +76,6 @@ def _search_musicbrainz_release_group(artist, title):
 
             if primary_type == "Single":
                 best_mbid = mbid
-                found_single = True
                 break  # Found a single, stop looking (results are usually sorted by relevance/score)
 
             # Keep the first album/EP result as fallback if we haven't found a single yet

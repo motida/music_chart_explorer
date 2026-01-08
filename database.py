@@ -3,7 +3,7 @@ import psycopg2
 import streamlit as st
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def _create_connection():
     try:
         conn = psycopg2.connect(

@@ -7,301 +7,244 @@ from ai_client import get_sql_from_llm
 from artwork_client import get_artwork_url
 from styles import apply_retro_style
 from dotenv import load_dotenv
-from schema_definitions import SCHEMA_ALL, SCHEMA_RAW, SCHEMA_RANKINGS
+from schema_definitions import SCHEMA_ALL
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Page Config
-st.set_page_config(page_title="Music Chart Explorer", layout="wide")
+st.set_page_config(
+    page_title="Music Chart Explorer",
+    page_icon="🎵",
+    layout="wide",
+)
 
-# --- RETRO CSS ---
+# Apply Custom CSS
 apply_retro_style()
-
-st.title("🎵 Music Chart Explorer")
-st.markdown("### > INITIALIZING DATA RETRIEVAL... 🚀")
-
-# Get API Key from environment
-api_key = os.environ.get("OPENAI_API_KEY", "")
 
 
 # Database Connection
+@st.cache_resource(show_spinner=False)
+def get_conn():
+    return get_connection()
 
 
-conn = get_connection()
+try:
+    conn = get_conn()
+except Exception as e:
+    st.error(f"Failed to connect to database: {e}")
+    st.stop()
 
 
-# Schemas are now imported from schema_definitions.py
+# --- HEADER ---
+st.title("Music Chart Explorer")
+st.markdown(
+    "Try: *'What were the top 5 songs of 1985?'* or *'How many weeks was Bohemian Rhapsody at #1?'*"
+)
 
 
-# Main UI
-# Sidebar for Debugging
-with st.sidebar:
-    st.header("System Status")
-    if conn:
-        st.success("🟢 Database Online")
-    else:
-        st.error("🔴 Database Offline")
+# --- CONFIGURATION ---
+api_key = os.environ.get("OPENAI_API_KEY")
+DEFAULT_LIMIT = 50
 
-    if not api_key:
-        api_key = st.text_input("Enter OpenAI API Key", type="password")
-        if api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
-            st.rerun()
+if not api_key:
+    st.warning("⚠️ OPENAI_API_KEY not found in environment variables.")
+    # Option: Allow input in main area if critical?
+    # For now, just warning. Code below checks if not api_key: st.stop()
 
-    with st.expander("Schema Viewer"):
-        st.markdown("**Raw Charts**")
-        st.code(SCHEMA_RAW, language="text")
-        st.markdown("**Rankings (View)**")
-        st.code(SCHEMA_RANKINGS, language="text")
 
-    st.markdown("---")
-
-# Configuration
-DEFAULT_LIMIT = int(os.environ.get("SQL_LIMIT", 100))
-
-st.markdown("### Explore the Charts")
-
-# Example Queries
-col1, col2, col3 = st.columns(3)
-if col1.button("🏆 Top 5 All-Time"):
-    st.session_state.question = "What are the top 5 songs of all time?"
-if col2.button("⏳ Longest #1 Hits"):
-    st.session_state.question = "Which songs spent the most weeks at position 1?"
-if col3.button("📅 First #1 of 1980"):
-    st.session_state.question = "What was the number 1 song on January 1st 1980?"
-
-# Search Form
-with st.form(key="search_form"):
+# --- MAIN SEARCH INPUT ---
+with st.form("search_form"):
     question = st.text_input(
-        "Ask a question about the charts:",
-        value=st.session_state.get("question", ""),
-        placeholder="e.g. What are the top 5 songs of all time?",
+        "Search Query",
+        label_visibility="collapsed",
+        placeholder="Ask about UK Singles Chart history...",
+        help="Example: 'Who had the most number ones in the 80s?'",
     )
-    submit_button = st.form_submit_button(label="Search")
+    submit_button = st.form_submit_button(label="Explore Charts", type="primary")
 
+
+# --- LOGIC & STATE MANAGEMENT ---
+
+# Initialize Session State
+if "search_results" not in st.session_state:
+    st.session_state.search_results = None
+if "generated_sql" not in st.session_state:
+    st.session_state.generated_sql = None
+if "last_question" not in st.session_state:
+    st.session_state.last_question = ""
+
+
+# Handling Form Submission
 if submit_button and question:
     if not api_key:
         st.error("Please provide an OpenAI API Key.")
         st.stop()
 
-    # Intelligent Routing - DEPRECATED
-    # Now we send the full context to the LLM and let it decide.
-    schema_context = SCHEMA_ALL
+    st.session_state.last_question = question
 
     # Generate SQL
-    with st.spinner("Generating SQL..."):
+    with st.spinner("Analyzing your request..."):
         try:
-            sql_query = get_sql_from_llm(question, schema_context, DEFAULT_LIMIT)
-            # Clean up SQL if it contains markdown code blocks
-            sql_query = (
-                sql_query.replace("```sql", "").replace("```", "").strip().rstrip(";")
-            )
+            sql_query = get_sql_from_llm(question, SCHEMA_ALL, DEFAULT_LIMIT)
+            # Clean up SQL if it contains markdown
+            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
 
-            # --- SQL SAFETY VALIDATION ---
-            forbidden_keywords = [
-                "DROP",
-                "DELETE",
-                "INSERT",
-                "UPDATE",
-                "ALTER",
-                "TRUNCATE",
-                "GRANT",
-                "REVOKE",
-                "CREATE",
-            ]
-            normalized_sql = sql_query.upper()
+            st.session_state.generated_sql = sql_query
 
-            if not normalized_sql.startswith("SELECT"):
-                st.error("🚨 Safety Alert: The generated query must start with SELECT.")
-                st.stop()
-
-            if any(keyword in normalized_sql for keyword in forbidden_keywords):
-                st.error(
-                    "🚨 Safety Alert: The generated query contains forbidden keywords. Only SELECT statements are allowed."
-                )
-                st.stop()
-
-            # --- LIMIT ENFORCEMENT ---
-            if "LIMIT" not in normalized_sql:
-                sql_query += f" LIMIT {DEFAULT_LIMIT}"
-                normalized_sql = sql_query.upper()
+            # Validate Safety
+            if not sql_query.lower().strip().startswith("select"):
+                st.error("For safety, only SELECT queries are allowed.")
+                st.session_state.search_results = None
             else:
-                # Optional: Parse and cap the limit if it's too high
-                # For simplicity, we'll just ensure it's not missing.
-                pass
-            # -----------------------------
-
-            with st.expander("🔍 View Generated SQL", expanded=False):
-                st.code(sql_query, language="sql")
+                # Execute Query
+                df = pd.read_sql(sql_query, conn)
+                st.session_state.search_results = df
 
         except Exception as e:
-            st.error(f"Error generating SQL: {e}")
-            st.stop()
+            st.error(f"An error occurred: {e}")
+            st.session_state.search_results = None
 
-    # Execute SQL
-    if conn:
-        try:
-            df = pd.read_sql(sql_query, conn)
 
-            if df.empty:
-                st.warning("Query returned no results.")
-            else:
-                # Enhanced Dataframe Display
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    column_config={
-                        "position": st.column_config.NumberColumn(
-                            "Rank", format="%d ⭐"
-                        ),
-                        "peak_position": st.column_config.NumberColumn(
-                            "Peak", format="#%d"
-                        ),
-                        "artist": "Artist",
-                        "title": "Song Title",
-                        "score": st.column_config.NumberColumn(
-                            "All-Time Score", format="%d pts"
-                        ),
-                        "weeks_in_chart": "Weeks on Chart",
-                        "weeks_at_top": "Weeks at #1",
-                        "from_date": st.column_config.DateColumn(
-                            "Date", format="DD/MM/YYYY"
-                        ),
-                        "first_charted": st.column_config.DateColumn(
-                            "First Entry", format="YYYY-MM-DD"
-                        ),
-                    },
-                    hide_index=True,
-                )
+# --- RENDER RESULTS (Persisted State) ---
 
-            # Visualization Logic
-            # Check if we have artist/title columns to plot history
-            if not df.empty and "artist" in df.columns and "title" in df.columns:
-                # If multiple rows, let user select one, or default to first
-                selected_row = 0
-                if len(df) > 1:
-                    options = [
-                        f"{r['artist']} - {r['title']}" for i, r in df.iterrows()
-                    ]
-                    selected_option = st.selectbox(
-                        "Select a song to visualize ranking history:", options
-                    )
-                    selected_row = options.index(selected_option)
+if st.session_state.generated_sql:
+    with st.expander("View Generated SQL (Debug)", expanded=False):
+        st.code(st.session_state.generated_sql, language="sql")
 
-                # Data is now correct: title=Song, artist=Artist
-                song_title = df.iloc[selected_row]["title"]
-                artist_name = df.iloc[selected_row]["artist"]
+if st.session_state.search_results is not None:
+    df = st.session_state.search_results
 
-                st.markdown("---")
-                st.subheader(f"📈 History: {artist_name} - {song_title}")
+    if df.empty:
+        st.warning("No results found for your query.")
+    else:
+        st.success(f"Found {len(df)} results")
 
-                # Fetch history
-                history_query = """
-                    SELECT from_date, to_date, position 
-                    FROM charts.uk_singles_prestreaming_raw 
-                    WHERE artist = %s AND title = %s 
-                    ORDER BY from_date
-                """
-                hist_df = pd.read_sql(
-                    history_query, conn, params=(artist_name, song_title)
-                )
+        # Enhanced Dataframe Display
+        st.dataframe(
+            df,
+            use_container_width=True,
+            column_config={
+                "position": st.column_config.NumberColumn("Rank", format="%d"),
+                "peak_position": st.column_config.NumberColumn("Peak", format="#%d"),
+                "artist": "Artist",
+                "title": "Song Title",
+                "score": st.column_config.NumberColumn(
+                    "All-Time Score", format="%d pts"
+                ),
+                "weeks_in_chart": "Weeks on Chart",
+                "weeks_at_top": "Weeks at #1",
+            },
+            hide_index=True,
+        )
 
-                if not hist_df.empty:
-                    # Calculate Metrics
-                    # ... (metrics logic kept) ...
-                    peak_pos = hist_df["position"].min()
-                    weeks_on_chart = len(hist_df)
-                    first_entry = hist_df["from_date"].iloc[0]
+    # Visualization Logic
+    # Check if we have artist/title columns to plot history
+    if not df.empty and "artist" in df.columns and "title" in df.columns:
+        # If multiple rows, let user select one, or default to first
+        options = [f"{r['artist']} - {r['title']}" for i, r in df.iterrows()]
 
-                    # Fetch Artwork
-                    artwork_url = get_artwork_url(artist_name, song_title)
+        # Use a unique key for the selectbox so it doesn't conflict
+        selected_option = st.selectbox(
+            "Select a song to visualize ranking history:", options, key="song_selector"
+        )
 
-                    # Layout: Artwork + Metrics
-                    col_art, col_metrics = st.columns([1, 3])
+        if selected_option:
+            selected_row = options.index(selected_option)
+            song_title = df.iloc[selected_row]["title"]
+            artist_name = df.iloc[selected_row]["artist"]
 
-                    with col_art:
-                        if artwork_url:
-                            st.image(
-                                artwork_url,
-                                caption=f"{artist_name} - {song_title}",
-                                use_container_width=True,
+            st.markdown("---")
+            st.subheader(f"📈 History: {artist_name} - {song_title}")
+
+            # Fetch history
+            history_query = """
+                SELECT from_date, to_date, position 
+                FROM charts.uk_singles_prestreaming_raw 
+                WHERE artist = %s AND title = %s 
+                ORDER BY from_date
+            """
+            hist_df = pd.read_sql(history_query, conn, params=(artist_name, song_title))
+
+            if not hist_df.empty:
+                # Calculate Metrics
+                peak_pos = hist_df["position"].min()
+                weeks_on_chart = len(hist_df)
+                first_entry = hist_df["from_date"].iloc[0]
+
+                # Fetch Artwork
+                artwork_url = get_artwork_url(artist_name, song_title)
+
+                # Gap Detection for Graph
+                # Insert None/NaN rows if weeks are skipped so Plotly breaks the line
+                hist_df["from_date"] = pd.to_datetime(hist_df["from_date"])
+
+                rows_with_gaps = []
+                prev_date = None
+
+                for _, row in hist_df.iterrows():
+                    curr_date = row["from_date"]
+                    if prev_date:
+                        delta = (curr_date - prev_date).days
+                        # If gap is > 9 days (accounting for potential chart day shifts), insert break
+                        if delta > 9:
+                            gap_date = prev_date + pd.Timedelta(days=7)
+                            # Append a row with None position to break the line
+                            rows_with_gaps.append(
+                                {"from_date": gap_date, "position": None}
                             )
-                        else:
-                            st.info("No artwork found")
 
-                    with col_metrics:
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric(
-                            "Peak Position",
-                            f"#{peak_pos}",
-                            delta=None,
-                            help="Best position reached",
+                    rows_with_gaps.append(row.to_dict())
+                    prev_date = curr_date
+
+                hist_df_gapped = pd.DataFrame(rows_with_gaps)
+
+                # Layout: Artwork + Metrics
+                col_art, col_metrics = st.columns([1, 3])
+
+                with col_art:
+                    if artwork_url:
+                        st.image(
+                            artwork_url,
+                            caption=f"{artist_name} - {song_title}",
+                            use_container_width=True,
                         )
-                        m2.metric(
-                            "Weeks on Chart",
-                            f"{weeks_on_chart}",
-                            help="Total weeks in top 100",
-                        )
-                        m3.metric(
-                            "First Entry",
-                            f"{first_entry}",
-                            help="Date first entered chart",
-                        )
+                    else:
+                        st.info("No artwork found")
 
-                    # Correct Data Gaps for Plotting
-                    # Ensure properly formatted dates
-                    hist_df["from_date"] = pd.to_datetime(hist_df["from_date"])
-
-                    # Create a complete weekly date range from start to finish
-                    full_date_range = pd.date_range(
-                        start=hist_df["from_date"].min(),
-                        end=hist_df["from_date"].max(),
-                        freq="7D",
+                with col_metrics:
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric(
+                        "Peak Position",
+                        f"#{peak_pos}",
+                        help="Best position reached",
+                    )
+                    m2.metric(
+                        "Weeks on Chart",
+                        f"{weeks_on_chart}",
+                        help="Total weeks in top 100",
+                    )
+                    m3.metric(
+                        "First Entry",
+                        f"{first_entry}",
+                        help="Date first entered chart",
                     )
 
-                    # Reindex to insert NaNs for missing weeks
-                    hist_df = (
-                        hist_df.set_index("from_date")
-                        .reindex(full_date_range)
-                        .reset_index()
-                        .rename(columns={"index": "from_date"})
-                    )
-
-                    # Plot
-                    # Add a custom column for hover display (handle NaNs gracefully)
-                    hist_df["week_range"] = hist_df.apply(
-                        lambda x: f"{x['from_date'].date()} to {x['to_date']}"
-                        if pd.notnull(x["position"])
-                        else "Not in Chart",
-                        axis=1,
-                    )
-
-                    fig = px.line(
-                        hist_df,
-                        x="from_date",
-                        y="position",
-                        title=f"Chart Run: {song_title}",
-                        markers=True,
-                        custom_data=["week_range"],
-                        labels={
-                            "position": "Chart Position",
-                            "from_date": "Week Start Date",
-                        },
-                    )
-
-                    fig.update_layout(yaxis=dict(autorange="reversed"))  # Rank 1 is top
-                    fig.update_traces(
-                        line_color="#1DB954",
-                        line_width=3,
-                        line_shape="linear",  # linear is usually better when handling gaps than 'hv' which might imply sustained position
-                        connectgaps=False,  # Explicitly do NOT connect gaps
-                        hovertemplate="<b>Week:</b> %{customdata[0]}<br><b>Position:</b> %{y}<extra></extra>",
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("No history found for this song.")
-
-        except Exception as e:
-            st.error(f"Error executing SQL: {e}")
+                # Plotly Chart
+                # Invert y-axis for ranking (1 is top)
+                fig = px.line(
+                    hist_df_gapped,
+                    x="from_date",
+                    y="position",
+                    title=f"Chart Run: {song_title}",
+                    markers=True,
+                )
+                # Explicitly tell Plotly NOT to connect gaps (though None usually does this)
+                fig.update_traces(connectgaps=False)
+                fig.update_yaxes(autorange="reversed")
+                fig.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig, use_container_width=True)

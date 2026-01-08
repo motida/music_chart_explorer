@@ -5,16 +5,17 @@ def apply_retro_style():
     st.markdown(
         """
         <style>
-        /* Retro Terminal/Arcade Theme */
+        /* Import Retro Font (VT323) */
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
+        /* Main App Background - CRT Black */
         .stApp {
-            background-color: #0a0a0a;
-            color: #00ff41;
+            background-color: #050505;
+            color: #33ff00;
             font-family: 'VT323', monospace;
         }
 
-        /* Scanline Effect */
+        /* Scanline Effect Overlay */
         .stApp::before {
             content: " ";
             display: block;
@@ -27,66 +28,113 @@ def apply_retro_style():
             pointer-events: none;
         }
 
-        /* Titles and Headers */
+        /* Headers with Neon Glow */
         h1, h2, h3 {
-            color: #ff00ff !important;
-            text-shadow: 3px 3px #00ffff;
+            color: #33ff00 !important; /* Green */
             font-family: 'VT323', monospace !important;
             text-transform: uppercase;
+            text-shadow: 2px 2px #005500;
+            letter-spacing: 2px;
+        }
+        
+        h1 {
+            border-bottom: 2px dashed #33ff00;
+            padding-bottom: 10px;
         }
 
-        /* Sidebar */
+        /* Sidebar in Terminal Gray */
         [data-testid="stSidebar"] {
-            background-color: #111 !important;
-            border-right: 2px solid #00ff41;
+            background-color: #0a0a0a !important;
+            border-right: 2px solid #33ff00;
+        }
+        
+        [data-testid="stSidebar"] * {
+            font-family: 'VT323', monospace !important;
+            color: #33ff00 !important;
         }
 
-        /* Buttons */
-        .stButton>button {
-            border: 2px solid #00ff41 !important;
-            background-color: #000 !important;
-            color: #00ff41 !important;
+        /* Retro Action Button */
+        div.stButton > button:first-child {
+            background-color: #000000 !important;
+            color: #33ff00 !important;
+            border: 2px solid #33ff00 !important;
             border-radius: 0px !important;
+            padding: 0.5rem 1rem !important;
             font-family: 'VT323', monospace !important;
             font-size: 1.5rem !important;
-            transition: 0.3s;
+            text-transform: uppercase;
+            box-shadow: 4px 4px 0px #005500 !important;
+            transition: all 0.1s;
+            width: 100%;
         }
 
-        .stButton>button:hover {
-            background-color: #00ff41 !important;
-            color: #000 !important;
-            box-shadow: 0 0 15px #00ff41;
+        div.stButton > button:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0px #005500 !important;
+            background-color: #33ff00 !important;
+            color: #000000 !important;
+        }
+        
+        /* Inputs - Console Style */
+        .stTextInput>div>div>input {
+            background-color: #000000 !important;
+            color: #33ff00 !important;
+            border: 2px solid #33ff00 !important;
+            border-radius: 0px !important;
+            font-family: 'VT323', monospace !important;
+            font-size: 1.2rem;
+        }
+        
+        .stTextInput>div>div>input::placeholder {
+            color: #007700 !important;
+            opacity: 0.7;
+        }
+        
+        .stTextInput>div>div>input:focus {
+            box-shadow: 0 0 15px #33ff00 !important;
+            border-color: #33ff00 !important;
         }
 
-        /* Dataframe & Tables */
+        /* Selectbox */
+        .stSelectbox>div>div {
+             background-color: #000000 !important;
+             color: #33ff00 !important;
+             border: 2px solid #33ff00 !important;
+             border-radius: 0px !important;
+             font-family: 'VT323', monospace !important;
+        }
+
+        /* Dataframes - Green Borders */
         .stDataFrame {
-            border: 1px solid #00ff41;
+            border: 1px dashed #33ff00;
+            font-family: 'VT323', monospace !important;
         }
         
         /* Metrics */
         [data-testid="stMetricValue"] {
-            color: #00ffff !important;
-            font-size: 2.5rem !important;
+            color: #33ff00 !important;
+            font-family: 'VT323', monospace !important;
+            text-shadow: 0px 0px 10px #005500;
         }
-
-        /* Blinking Cursor Animation */
-        @keyframes blink-shadow {
-            0% { box-shadow: 0 0 0 #00ff41; }
-            50% { box-shadow: 0 0 10px #00ff41; }
-            100% { box-shadow: 0 0 0 #00ff41; }
+        
+        [data-testid="stMetricLabel"] {
+            color: #00cc00 !important;
+            font-family: 'VT323', monospace !important;
         }
-
-        /* Inputs */
-        input {
-            background-color: #111 !important;
-            color: #00ff41 !important;
-            border: 1px solid #00ff41 !important;
-            caret-color: #00ff41 !important;
+        
+        /* Images */
+        img {
+            border: 1px solid #33ff00;
+            box-shadow: 4px 4px 0px #005500;
+            opacity: 0.9;
         }
-
-        input:focus {
-            animation: blink-shadow 2s infinite;
-            outline: none !important;
+        
+        /* Alerts */
+        .stAlert {
+            background-color: #050505;
+            color: #33ff00;
+            border: 1px solid #33ff00;
+            font-family: 'VT323', monospace !important;
         }
         </style>
         """,
