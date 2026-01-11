@@ -1,6 +1,7 @@
 import os
 import psycopg2
 
+
 def inspect_schema():
     try:
         conn = psycopg2.connect(
@@ -8,7 +9,7 @@ def inspect_schema():
             port=os.environ.get("POSTGRES_PORT", "5432"),
             user=os.environ.get("POSTGRES_USER", "postgres"),
             password=os.environ.get("POSTGRES_PASSWORD", ""),
-            dbname=os.environ.get("POSTGRES_DATABASE", "musiccharts")
+            dbname=os.environ.get("POSTGRES_DATABASE", "musiccharts"),
         )
         cur = conn.cursor()
 
@@ -41,12 +42,12 @@ def inspect_schema():
         except Exception as e:
             print(f"Error: {e}")
 
-
         cur.close()
         conn.close()
 
     except Exception as e:
         print(f"Error connecting to database: {e}")
+
 
 if __name__ == "__main__":
     inspect_schema()
