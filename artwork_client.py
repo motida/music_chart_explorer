@@ -64,7 +64,7 @@ def _search_musicbrainz_release_group(artist, title):
         # We want "Single" primary type if possible
 
         best_mbid = None
-        found_single = False
+        # found_single = False
 
         for rg in data["release-groups"]:
             # Check score (0-100)
