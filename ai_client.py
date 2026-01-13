@@ -8,7 +8,8 @@ from database import get_connection
 
 def get_sql_from_llm(question, schema_context, limit, max_retries=5):
     api_key = os.environ.get("OPENAI_API_KEY", "")
-    client = OpenAI(api_key=api_key)
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    client = OpenAI(api_key=api_key, base_url=base_url)
 
     # Allow overriding max_retries via env var
     max_retries = int(os.environ.get("SQL_MAX_RETRIES", max_retries))
