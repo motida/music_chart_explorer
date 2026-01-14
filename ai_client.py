@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from openai import OpenAI
 
 from database import get_connection
@@ -51,9 +52,29 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
             temperature=0,
         )
 
-        sql_query = response.choices[0].message.content.strip()
-        # Basic cleanup
-        cleaned_sql = sql_query.replace("```sql", "").replace("```", "").strip()
+        raw_response = response.choices[0].message.content.strip()
+
+        # Improved SQL Extraction
+        # 1. Try to find content within <sql> tags (common in reasoning models)
+        sql_match = re.search(
+            r"<sql>(.*?)</sql>", raw_response, re.DOTALL | re.IGNORECASE
+        )
+        if sql_match:
+            sql_query = sql_match.group(1).strip()
+        else:
+            # 2. Try to find content within markdown code blocks
+            code_block_match = re.search(
+                r"```sql(.*?)```", raw_response, re.DOTALL | re.IGNORECASE
+            )
+            if code_block_match:
+                sql_query = code_block_match.group(1).strip()
+            else:
+                # 3. Fallback: use the raw response but try to strip common "```" wrappers if fuzzy matched
+                sql_query = (
+                    raw_response.replace("```sql", "").replace("```", "").strip()
+                )
+
+        cleaned_sql = sql_query
 
         # Validation Step
         conn = get_connection()
