@@ -1,9 +1,15 @@
+import os
+import logging
 from openai import OpenAI
 
-import os
-
-
 from database import get_connection
+
+# Configure logging
+logging.basicConfig(
+    filename="sql_generation.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 
 def get_sql_from_llm(question, schema_context, limit, max_retries=5):
@@ -53,6 +59,9 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
         conn = get_connection()
         if not conn:
             # If DB is unavailable, we cannot validate. Return what we have.
+            logging.warning(
+                f"DB Unavailable. Question: {question} -> Generated SQL: {cleaned_sql}"
+            )
             return cleaned_sql
 
         try:
@@ -61,6 +70,9 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
                 cur.execute(f"EXPLAIN {cleaned_sql}")
 
             # If we get here, SQL is valid
+            logging.info(
+                f"SUCCESS. Question: {question} -> Generated SQL: {cleaned_sql}"
+            )
             return cleaned_sql
 
         except Exception as e:
@@ -68,6 +80,9 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
             # otherwise the connection remains in an aborted state.
             conn.rollback()
             last_error = str(e)
+            logging.error(
+                f"FAILURE. Question: {question} -> Generated SQL: {cleaned_sql} -> Error: {last_error}"
+            )
             # Feedback to LLM
             messages.append({"role": "assistant", "content": sql_query})
             messages.append(
@@ -79,6 +94,7 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
             # Continue to next iteration
 
     # If retries exhausted
+    logging.critical(f"GAVE UP. Question: {question} -> Last Error: {last_error}")
     raise Exception(
         f"Failed to generate valid SQL after {max_retries} attempts. Last error: {last_error}"
     )
