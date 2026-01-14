@@ -7,3 +7,5 @@ python-dotenv
 requests
 ruff
 pre-commit
+pytest
+pytest-mock
