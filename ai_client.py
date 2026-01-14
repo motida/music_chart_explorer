@@ -63,16 +63,29 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
             sql_query = sql_match.group(1).strip()
         else:
             # 2. Try to find content within markdown code blocks
+            # Matches ``` followed by optional lang, optional newline/space, then content, then ```
             code_block_match = re.search(
-                r"```sql(.*?)```", raw_response, re.DOTALL | re.IGNORECASE
+                r"```(?:[\w\s]*)\n(.*?)```", raw_response, re.DOTALL | re.IGNORECASE
             )
             if code_block_match:
                 sql_query = code_block_match.group(1).strip()
             else:
-                # 3. Fallback: use the raw response but try to strip common "```" wrappers if fuzzy matched
-                sql_query = (
-                    raw_response.replace("```sql", "").replace("```", "").strip()
-                )
+                # 3. Fallback: aggressive cleanup
+                sql_query = raw_response.strip()
+                if sql_query.startswith("```"):
+                    # Split by newline and drop the first line if it looks like a language tag
+                    parts = sql_query.split("\n", 1)
+                    if len(parts) > 1:
+                        sql_query = parts[1]
+                    else:
+                        sql_query = sql_query.lstrip("`")
+
+                if sql_query.endswith("```"):
+                    sql_query = sql_query.rstrip("`").rstrip()
+
+        # Post-cleanup: Sometimes "sql" lingers if regex was imperfect
+        if sql_query.lower().startswith("sql"):
+            sql_query = sql_query[3:].strip()
 
         cleaned_sql = sql_query
 
