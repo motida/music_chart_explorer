@@ -3,8 +3,6 @@ import logging
 import re
 from openai import OpenAI
 
-from database import get_connection
-
 # Configure logging
 logging.basicConfig(
     filename="sql_generation.log",
@@ -13,7 +11,21 @@ logging.basicConfig(
 )
 
 
-def get_sql_from_llm(question, schema_context, limit, max_retries=5):
+def get_sql_from_llm(
+    question, schema_context, limit, validation_callback=None, max_retries=5
+):
+    """
+    Generates SQL from natural language.
+
+    Args:
+        question: User's question.
+        schema_context: DB Schema description.
+        limit: Default row limit.
+        validation_callback: Optional function(sql) -> (is_valid, error_message).
+                             If provided, it will be used to VALIDATE the SQL via EXPLAIN.
+                             If it returns (False, error), the LLM is prompted to retry.
+        max_retries: Number of retry attempts.
+    """
     api_key = os.environ.get("OPENAI_API_KEY", "")
     base_url = os.environ.get("OPENAI_BASE_URL")
     client = OpenAI(api_key=api_key, base_url=base_url)
@@ -89,43 +101,45 @@ def get_sql_from_llm(question, schema_context, limit, max_retries=5):
 
         cleaned_sql = sql_query
 
+        # Final Safety Net: Blindly remove backticks if they still exist
+        if "```" in cleaned_sql:
+            cleaned_sql = cleaned_sql.replace("```sql", "").replace("```", "").strip()
+
+        logging.info(
+            f"DEBUG extraction. Raw: {raw_response!r} -> Cleaned: {cleaned_sql!r}"
+        )
+
         # Validation Step
-        conn = get_connection()
-        if not conn:
-            # If DB is unavailable, we cannot validate. Return what we have.
-            logging.warning(
-                f"DB Unavailable. Question: {question} -> Generated SQL: {cleaned_sql}"
-            )
-            return cleaned_sql
+        if validation_callback:
+            is_valid, error_msg = validation_callback(cleaned_sql)
 
-        try:
-            with conn.cursor() as cur:
-                # EXPLAIN parses and plans the query without executing it, checking for syntax/schema errors
-                cur.execute(f"EXPLAIN {cleaned_sql}")
-
-            # If we get here, SQL is valid
+            if is_valid:
+                # If we get here, SQL is valid
+                logging.info(
+                    f"SUCCESS. Question: {question} -> Generated SQL: {cleaned_sql}"
+                )
+                return cleaned_sql
+            else:
+                # Validation failed
+                logging.error(
+                    f"FAILURE. Question: {question} -> Generated SQL: {cleaned_sql} -> Error: {error_msg}"
+                )
+                last_error = error_msg
+                # Feedback to LLM
+                messages.append({"role": "assistant", "content": sql_query})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"The previous query was invalid and returned this error: {last_error}. Please provide a corrected SQL query following the original rules.",
+                    }
+                )
+                # Continue to next iteration
+        else:
+            # No validation callback provided, return as is (skipping logging of success/fail based on DB)
             logging.info(
-                f"SUCCESS. Question: {question} -> Generated SQL: {cleaned_sql}"
+                f"GENERATED (No Validation). Question: {question} -> Generated SQL: {cleaned_sql}"
             )
             return cleaned_sql
-
-        except Exception as e:
-            # Important: Rollback the transaction if EXPLAIN failed,
-            # otherwise the connection remains in an aborted state.
-            conn.rollback()
-            last_error = str(e)
-            logging.error(
-                f"FAILURE. Question: {question} -> Generated SQL: {cleaned_sql} -> Error: {last_error}"
-            )
-            # Feedback to LLM
-            messages.append({"role": "assistant", "content": sql_query})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"The previous query was invalid and returned this error: {last_error}. Please provide a corrected SQL query following the original rules.",
-                }
-            )
-            # Continue to next iteration
 
     # If retries exhausted
     logging.critical(f"GAVE UP. Question: {question} -> Last Error: {last_error}")

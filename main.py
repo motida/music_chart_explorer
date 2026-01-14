@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import os
-import plotly.express as px
+
 from database import get_connection
 from ai_client import get_sql_from_llm
 from artwork_client import get_artwork_url
 from styles import apply_retro_style
+from ui_components import plot_song_chart, render_song_details
 from dotenv import load_dotenv
 from schema_definitions import SCHEMA_ALL
 
@@ -45,6 +46,7 @@ st.markdown(
 
 # --- CONFIGURATION ---
 api_key = os.environ.get("OPENAI_API_KEY")
+show_sql_debug = os.getenv("SHOW_SQL_DEBUG", "False").lower() in ("true", "1", "t")
 DEFAULT_LIMIT = 50
 
 if not api_key:
@@ -83,10 +85,32 @@ if submit_button and question:
 
     st.session_state.last_question = question
 
+    # Define Validation Callback
+    def validate_sql_callback(sql: str):
+        """
+        Validates SQL using EXPLAIN in the database.
+        Returns: (is_valid: bool, error_message: str)
+        """
+        if not conn:
+            return False, "Database unavailable"
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"EXPLAIN {sql}")
+            return True, None
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)
+
     # Generate SQL
     with st.spinner("Analyzing your request..."):
         try:
-            sql_query = get_sql_from_llm(question, SCHEMA_ALL, DEFAULT_LIMIT)
+            sql_query = get_sql_from_llm(
+                question,
+                SCHEMA_ALL,
+                DEFAULT_LIMIT,
+                validation_callback=validate_sql_callback,
+            )
             # Clean up SQL if it contains markdown
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
 
@@ -108,7 +132,7 @@ if submit_button and question:
 
 # --- RENDER RESULTS (Persisted State) ---
 
-if st.session_state.generated_sql:
+if st.session_state.generated_sql and show_sql_debug:
     with st.expander("View Generated SQL (Debug)", expanded=False):
         st.code(st.session_state.generated_sql, language="sql")
 
@@ -175,76 +199,15 @@ if st.session_state.search_results is not None:
                 # Fetch Artwork
                 artwork_url = get_artwork_url(artist_name, song_title)
 
-                # Gap Detection for Graph
-                # Insert None/NaN rows if weeks are skipped so Plotly breaks the line
-                hist_df["from_date"] = pd.to_datetime(hist_df["from_date"])
-
-                rows_with_gaps = []
-                prev_date = None
-
-                for _, row in hist_df.iterrows():
-                    curr_date = row["from_date"]
-                    if prev_date:
-                        delta = (curr_date - prev_date).days
-                        # If gap is > 9 days (accounting for potential chart day shifts), insert break
-                        if delta > 9:
-                            gap_date = prev_date + pd.Timedelta(days=7)
-                            # Append a row with None position to break the line
-                            rows_with_gaps.append(
-                                {"from_date": gap_date, "position": None}
-                            )
-
-                    rows_with_gaps.append(row.to_dict())
-                    prev_date = curr_date
-
-                hist_df_gapped = pd.DataFrame(rows_with_gaps)
-
-                # Layout: Artwork + Metrics
-                col_art, col_metrics = st.columns([1, 3])
-
-                with col_art:
-                    if artwork_url:
-                        st.image(
-                            artwork_url,
-                            caption=f"{artist_name} - {song_title}",
-                            use_container_width=True,
-                        )
-                    else:
-                        st.info("No artwork found")
-
-                with col_metrics:
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric(
-                        "Peak Position",
-                        f"#{peak_pos}",
-                        help="Best position reached",
-                    )
-                    m2.metric(
-                        "Weeks on Chart",
-                        f"{weeks_on_chart}",
-                        help="Total weeks in top 100",
-                    )
-                    m3.metric(
-                        "First Entry",
-                        f"{first_entry}",
-                        help="Date first entered chart",
-                    )
+                # Render Details
+                render_song_details(
+                    artist_name,
+                    song_title,
+                    artwork_url,
+                    peak_pos,
+                    weeks_on_chart,
+                    first_entry,
+                )
 
                 # Plotly Chart
-                # Invert y-axis for ranking (1 is top)
-                fig = px.line(
-                    hist_df_gapped,
-                    x="from_date",
-                    y="position",
-                    title=f"Chart Run: {song_title}",
-                    markers=True,
-                )
-                # Explicitly tell Plotly NOT to connect gaps (though None usually does this)
-                fig.update_traces(connectgaps=False)
-                fig.update_yaxes(autorange="reversed")
-                fig.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                plot_song_chart(hist_df, f"Chart Run: {song_title}")
