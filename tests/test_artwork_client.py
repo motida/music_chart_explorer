@@ -13,6 +13,12 @@ def mock_requests_get():
         yield mock_get
 
 
+@pytest.fixture(autouse=True)
+def mock_sleep():
+    with patch("time.sleep"):
+        yield
+
+
 @pytest.fixture
 def mock_requests_head():
     with patch("requests.head") as mock_head:

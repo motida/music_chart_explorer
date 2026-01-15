@@ -1,5 +1,7 @@
 import requests
 import streamlit as st
+import time
+import logging
 
 # User Agent is required by MusicBrainz API
 # See: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
@@ -33,7 +35,7 @@ def get_artwork_url(artist: str, title: str) -> str:
         return _get_cover_art_archive_url(mbid)
 
     except Exception as e:
-        print(f"Error fetching artwork: {e}")
+        logging.error(f"Error fetching artwork: {e}")
         return None
 
 
@@ -50,8 +52,8 @@ def _search_musicbrainz_release_group(artist, title):
     headers = {"User-Agent": USER_AGENT}
 
     try:
-        # Respect rate limiting (1 req/sec) - though cache helps
-        # time.sleep(1.1)
+        # Respect rate limiting (1 req/sec)
+        time.sleep(1.0)
 
         response = requests.get(url, params=params, headers=headers, timeout=5)
         response.raise_for_status()
@@ -85,7 +87,7 @@ def _search_musicbrainz_release_group(artist, title):
         return best_mbid
 
     except Exception as e:
-        print(f"MusicBrainz Search Error: {e}")
+        logging.error(f"MusicBrainz Search Error: {e}")
         return None
 
 
@@ -99,17 +101,18 @@ def _get_cover_art_archive_url(mbid):
     url = f"https://coverartarchive.org/release-group/{mbid}/front-500"
 
     try:
-        response = requests.head(url, timeout=3)  # HEAD to check existence
-        if response.status_code in [200, 302, 307]:
+        response = requests.head(url, timeout=3, allow_redirects=True)
+        if response.status_code == 200:
             return url
 
         # If 404, try generic 'front' (might be original size)
         url_fallback = f"https://coverartarchive.org/release-group/{mbid}/front"
-        response = requests.head(url_fallback, timeout=3)
-        if response.status_code in [200, 302, 307]:
+        response = requests.head(url_fallback, timeout=3, allow_redirects=True)
+        if response.status_code == 200:
             return url_fallback
 
         return None
 
-    except Exception:
+    except Exception as e:
+        logging.error(f"Cover Art Archive Error: {e}")
         return None
