@@ -126,7 +126,14 @@ if submit_button and question:
                 st.session_state.search_results = df
 
         except Exception as e:
-            st.error(f"An error occurred: {e}")
+            if 'relation "charts.uk_singles_prestreaming_scored" does not exist' in str(
+                e
+            ):
+                st.error(
+                    "The `charts.uk_singles_prestreaming_scored` materialized view does not exist. Please run the `create_view.py` script to create it."
+                )
+            else:
+                st.error(f"An error occurred: {e}")
             st.session_state.search_results = None
 
 

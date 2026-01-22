@@ -6,11 +6,14 @@ import streamlit as st
 @st.cache_resource(show_spinner=False)
 def _create_connection():
     try:
+        password = os.environ.get("POSTGRES_PASSWORD", "")
+        if not password:
+            raise ValueError("POSTGRES_PASSWORD not found in environment variables.")
         conn = psycopg2.connect(
             host=os.environ.get("POSTGRES_HOST", "localhost"),
             port=os.environ.get("POSTGRES_PORT", "5432"),
             user=os.environ.get("POSTGRES_USER", "postgres"),
-            password=os.environ.get("POSTGRES_PASSWORD", ""),
+            password=password,
             dbname=os.environ.get("POSTGRES_DATABASE", "musiccharts"),
             sslmode=os.environ.get(
                 "POSTGRES_SSLMODE", "prefer"

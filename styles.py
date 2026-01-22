@@ -2,6 +2,9 @@ import streamlit as st
 
 
 def apply_retro_style():
+    """
+    Applies a retro CRT monitor style to the Streamlit app.
+    """
     st.markdown(
         """
         <style>
@@ -11,11 +14,13 @@ def apply_retro_style():
         /* Main App Background - CRT Black */
         .stApp {
             background-color: #050505;
-            color: #33ff00;
+            color: #33ff00; /* Bright green text */
             font-family: 'VT323', monospace;
         }
 
-        /* Scanline Effect Overlay */
+        /* Scanline Effect Overlay 
+           Creates a subtle visual effect resembling a CRT monitor's scanlines.
+        */
         .stApp::before {
             content: " ";
             display: block;
@@ -25,7 +30,7 @@ def apply_retro_style():
                         linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
             z-index: 2;
             background-size: 100% 2px, 3px 100%;
-            pointer-events: none;
+            pointer-events: none; /* Allows clicks to pass through the overlay */
         }
 
         /* Headers with Neon Glow */
@@ -33,7 +38,7 @@ def apply_retro_style():
             color: #33ff00 !important; /* Green */
             font-family: 'VT323', monospace !important;
             text-transform: uppercase;
-            text-shadow: 2px 2px #005500;
+            text-shadow: 2px 2px #005500; /* Dark green shadow for depth */
             letter-spacing: 2px;
         }
         
@@ -58,21 +63,21 @@ def apply_retro_style():
             background-color: #000000 !important;
             color: #33ff00 !important;
             border: 2px solid #33ff00 !important;
-            border-radius: 0px !important;
+            border-radius: 0px !important; /* Sharp corners */
             padding: 0.5rem 1rem !important;
             font-family: 'VT323', monospace !important;
             font-size: 1.5rem !important;
             text-transform: uppercase;
-            box-shadow: 4px 4px 0px #005500 !important;
+            box-shadow: 4px 4px 0px #005500 !important; /* 3D effect */
             transition: all 0.1s;
             width: 100%;
         }
 
         div.stButton > button:hover {
-            transform: translate(2px, 2px);
+            transform: translate(2px, 2px); /* "Pushed in" effect */
             box-shadow: 2px 2px 0px #005500 !important;
             background-color: #33ff00 !important;
-            color: #000000 !important;
+            color: #000000 !important; /* Invert colors on hover */
         }
         
         /* Inputs - Console Style */
@@ -90,6 +95,7 @@ def apply_retro_style():
             opacity: 0.7;
         }
         
+        /* Glow effect on focus */
         .stTextInput>div>div>input:focus {
             box-shadow: 0 0 15px #33ff00 !important;
             border-color: #33ff00 !important;

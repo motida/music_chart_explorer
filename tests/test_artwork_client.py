@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from artwork_client import (
     get_artwork_url,
-    _search_musicbrainz_release_group,
+    _search_musicbrainz_candidates,
     _get_cover_art_archive_url,
 )
 
@@ -25,20 +25,21 @@ def mock_requests_head():
         yield mock_head
 
 
-def test_search_release_group_found(mock_requests_get):
-    """Test finding a release group successfully."""
+def test_search_release_group_candidates(mock_requests_get):
+    """Test finding release candidates with prioritization."""
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "release-groups": [
-            {"id": "mbid1", "primary-type": "Album", "score": 90},
-            {"id": "mbid2", "primary-type": "Single", "score": 95},
+            {"id": "mbid_album", "primary-type": "Album", "score": 90},
+            {"id": "mbid_single", "primary-type": "Single", "score": 95},
         ]
     }
     mock_response.raise_for_status.return_value = None
     mock_requests_get.return_value = mock_response
 
-    mbid = _search_musicbrainz_release_group("Artist", "Song")
-    assert mbid == "mbid2"  # Should prioritize Single
+    candidates = _search_musicbrainz_candidates("Artist", "Song")
+    # Should contain both, but Single first
+    assert candidates == ["mbid_single", "mbid_album"]
 
 
 def test_search_release_group_none_found(mock_requests_get):
@@ -47,8 +48,8 @@ def test_search_release_group_none_found(mock_requests_get):
     mock_response.json.return_value = {"release-groups": []}
     mock_requests_get.return_value = mock_response
 
-    mbid = _search_musicbrainz_release_group("Artist", "Song")
-    assert mbid is None
+    candidates = _search_musicbrainz_candidates("Artist", "Song")
+    assert candidates == []
 
 
 def test_get_cover_art_url_success(mock_requests_head):

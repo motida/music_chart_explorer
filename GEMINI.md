@@ -63,7 +63,7 @@ The application will typically be accessible at `http://localhost:8501`.
     python inspect_schema.py
     ```
 
-*   **`create_view.py`**: Creates a materialized view named `charts.artist_song_rankings` to aggregate song performance data (weeks on chart, peak position, etc.).
+*   **`create_view.py`**: Creates a materialized view named `charts.uk_singles_prestreaming_scored` to aggregate song performance data (weeks on chart, peak position, etc.). This script should be run after the database is populated with the raw chart data.
     ```bash
     python create_view.py
     ```

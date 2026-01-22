@@ -17,29 +17,45 @@ def get_artwork_url(artist: str, title: str) -> str:
     using MusicBrainz and the Cover Art Archive.
 
     Strategy:
-    1. Search MusicBrainz for a "Release Group" matching the artist and title.
-       - Prioritize type "Single".
-    2. Use the MusicBrainz ID (MBID) to fetch the front cover from
+    1. Search MusicBrainz for a list of candidate "Release Groups" matching the artist and title.
+       - Prioritize type "Single", then "Album", etc.
+    2. Iterate through candidates and try to fetch the front cover from
        the Cover Art Archive.
+    3. Return the first valid URL found.
     """
     if not artist or not title:
         return None
 
     try:
-        # 1. Search for Release Group
-        mbid = _search_musicbrainz_release_group(artist, title)
-        if not mbid:
+        # 1. Search for Release Group Candidates
+        candidates = _search_musicbrainz_candidates(artist, title)
+        if not candidates:
             return None
 
-        # 2. Fetch Cover Art
-        return _get_cover_art_archive_url(mbid)
+        # 2. Iterate and Fetch Cover Art
+        for mbid in candidates:
+            url = _get_cover_art_archive_url(mbid)
+            if url:
+                return url
+            # Tiny sleep to be nice to Cover Art Archive if we are hammering it
+            time.sleep(0.1)
+
+        return None
 
     except Exception as e:
         logging.error(f"Error fetching artwork: {e}")
         return None
 
 
-def _search_musicbrainz_release_group(artist, title):
+def _search_musicbrainz_candidates(artist, title):
+    """
+    Returns a list of MBIDs for release groups, sorted by preference:
+    1. Perfect matches (score ~100) and type 'Single'
+    2. Perfect matches (score ~100) and type 'Album'
+    3. Other high-scoring matches
+    """
+    if not USER_AGENT:
+        raise ValueError("USER_AGENT not found in environment variables.")
     url = "https://musicbrainz.org/ws/2/release-group"
 
     # lucene search query
@@ -55,18 +71,24 @@ def _search_musicbrainz_release_group(artist, title):
         # Respect rate limiting (1 req/sec)
         time.sleep(1.0)
 
-        response = requests.get(url, params=params, headers=headers, timeout=5)
-        response.raise_for_status()
+        # Retry logic for MusicBrainz (sometimes it resets connection)
+        for attempt in range(2):
+            try:
+                response = requests.get(url, params=params, headers=headers, timeout=5)
+                response.raise_for_status()
+                break
+            except requests.RequestException as e:
+                if attempt == 1:
+                    raise e
+                time.sleep(1.0)
+
         data = response.json()
 
         if not data.get("release-groups"):
-            return None
+            return []
 
-        # Filter/Prioritize
-        # We want "Single" primary type if possible
-
-        best_mbid = None
-        # found_single = False
+        singles = []
+        others = []
 
         for rg in data["release-groups"]:
             # Check score (0-100)
@@ -77,42 +99,40 @@ def _search_musicbrainz_release_group(artist, title):
             mbid = rg.get("id")
 
             if primary_type == "Single":
-                best_mbid = mbid
-                break  # Found a single, stop looking (results are usually sorted by relevance/score)
+                singles.append(mbid)
+            else:
+                others.append(mbid)
 
-            # Keep the first album/EP result as fallback if we haven't found a single yet
-            if not best_mbid:
-                best_mbid = mbid
-
-        return best_mbid
+        # Return concatenated list: Singles first, then others
+        return singles + others
 
     except Exception as e:
         logging.error(f"MusicBrainz Search Error: {e}")
-        return None
+        return []
 
 
 def _get_cover_art_archive_url(mbid):
     # Try to get the 500px front image
     # https://coverartarchive.org/release-group/{mbid}/front-500
 
-    # Note: Cover Art Archive usually maps Release Group -> Release -> Image
-    # 'release-group' endpoint redirects to the 'release' image
+    # Standard endpoints to try
+    # 1. front-500 (Preferred size)
+    # 2. front (Original size, fallback)
 
-    url = f"https://coverartarchive.org/release-group/{mbid}/front-500"
+    urls_to_try = [
+        f"https://coverartarchive.org/release-group/{mbid}/front-500",
+        f"https://coverartarchive.org/release-group/{mbid}/front",
+    ]
 
-    try:
-        response = requests.head(url, timeout=3, allow_redirects=True)
-        if response.status_code == 200:
-            return url
+    for url in urls_to_try:
+        try:
+            # Short timeout, follow redirects
+            response = requests.head(url, timeout=3, allow_redirects=True)
+            if response.status_code == 200:
+                return url
+        except Exception as e:
+            # Just log and continue to next format/candidate
+            logging.debug(f"Failed to fetch {url}: {e}")
+            continue
 
-        # If 404, try generic 'front' (might be original size)
-        url_fallback = f"https://coverartarchive.org/release-group/{mbid}/front"
-        response = requests.head(url_fallback, timeout=3, allow_redirects=True)
-        if response.status_code == 200:
-            return url_fallback
-
-        return None
-
-    except Exception as e:
-        logging.error(f"Cover Art Archive Error: {e}")
-        return None
+    return None

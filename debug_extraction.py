@@ -29,18 +29,27 @@ def extract_sql_v1(raw_response):
     return "FALLBACK", sql_query
 
 
-# Test Case from Log (reconstructed)
-# Assuming standard newlines
-log_case = """```sql
+# Test Cases
+test_cases = {
+    "log_case": """```sql
 SELECT artist, title, weeks_at_top 
 FROM charts.uk_singles_prestreaming_scored 
 WHERE first_charted BETWEEN '1980-01-01' AND '1989-12-31'
 ORDER BY weeks_at_top DESC 
 LIMIT 1;
-```"""
+```""",
+    "log_case_crlf": """```sql\r
+SELECT artist, title, weeks_at_top \r
+FROM charts.uk_singles_prestreaming_scored \r
+WHERE first_charted BETWEEN '1980-01-01' AND '1989-12-31'\r
+ORDER BY weeks_at_top DESC \r
+LIMIT 1;\r
+```""",
+    "no_markdown": "SELECT * FROM charts;",
+    "leading_text": "Here is the query:\nSELECT * FROM charts;",
+    "trailing_text": "SELECT * FROM charts;\nHere is the query:",
+    "xml_tags": "<sql>SELECT * FROM charts;</sql>",
+}
 
-# Case with Carriage Returns
-log_case_crlf = log_case.replace("\n", "\r\n")
-
-print(f"Log Case: {extract_sql_v1(log_case)}")
-print(f"Log Case CRLF: {extract_sql_v1(log_case_crlf)}")
+for name, case in test_cases.items():
+    print(f"{name}: {extract_sql_v1(case)}")

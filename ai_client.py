@@ -27,6 +27,8 @@ def get_sql_from_llm(
         max_retries: Number of retry attempts.
     """
     api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not found in environment variables.")
     base_url = os.environ.get("OPENAI_BASE_URL")
     client = OpenAI(api_key=api_key, base_url=base_url)
 
