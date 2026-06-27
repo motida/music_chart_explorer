@@ -1,17 +1,12 @@
 import streamlit as st
-import pandas as pd
-import os
 
 from database import get_connection
 from ai_client import get_sql_from_llm
 from artwork_client import get_artwork_url
 from styles import apply_retro_style
-from ui_components import plot_song_chart, render_song_details
-from dotenv import load_dotenv
+from ui_components import plot_song_chart, render_metrics, render_artwork
+from config import config
 from schema_definitions import SCHEMA_ALL
-
-# Load environment variables from .env file
-load_dotenv()
 
 # Page Config
 st.set_page_config(
@@ -25,13 +20,8 @@ apply_retro_style()
 
 
 # Database Connection
-@st.cache_resource(show_spinner=False)
-def get_conn():
-    return get_connection()
-
-
 try:
-    conn = get_conn()
+    conn = get_connection()
 except Exception as e:
     st.error(f"Failed to connect to database: {e}")
     st.stop()
@@ -45,8 +35,8 @@ st.markdown(
 
 
 # --- CONFIGURATION ---
-api_key = os.environ.get("OPENAI_API_KEY")
-show_sql_debug = os.getenv("SHOW_SQL_DEBUG", "False").lower() in ("true", "1", "t")
+api_key = config.OPENAI_API_KEY
+show_sql_debug = config.SHOW_SQL_DEBUG
 DEFAULT_LIMIT = 50
 
 if not api_key:
@@ -95,11 +85,9 @@ if submit_button and question:
             return False, "Database unavailable"
 
         try:
-            with conn.cursor() as cur:
-                cur.execute(f"EXPLAIN {sql}")
+            conn.execute(f"EXPLAIN {sql}")
             return True, None
         except Exception as e:
-            conn.rollback()
             return False, str(e)
 
     # Generate SQL
@@ -122,7 +110,7 @@ if submit_button and question:
                 st.session_state.search_results = None
             else:
                 # Execute Query
-                df = pd.read_sql(sql_query, conn)
+                df = conn.execute(sql_query).df()
                 st.session_state.search_results = df
 
         except Exception as e:
@@ -152,7 +140,7 @@ if st.session_state.search_results is not None:
         st.success(f"Found {len(df)} results")
 
         # Enhanced Dataframe Display
-        st.dataframe(
+        event = st.dataframe(
             df,
             use_container_width=True,
             column_config={
@@ -167,54 +155,51 @@ if st.session_state.search_results is not None:
                 "weeks_at_top": "Weeks at #1",
             },
             hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
         )
 
     # Visualization Logic
     # Check if we have artist/title columns to plot history
     if not df.empty and "artist" in df.columns and "title" in df.columns:
-        # If multiple rows, let user select one, or default to first
-        options = [f"{r['artist']} - {r['title']}" for i, r in df.iterrows()]
-
-        # Use a unique key for the selectbox so it doesn't conflict
-        selected_option = st.selectbox(
-            "Select a song to visualize ranking history:", options, key="song_selector"
+        st.markdown(
+            "*Select a row in the table above to visualize its chart history and artwork.*"
         )
 
-        if selected_option:
-            selected_row = options.index(selected_option)
-            song_title = df.iloc[selected_row]["title"]
-            artist_name = df.iloc[selected_row]["artist"]
+        selected_rows = event.selection.rows
+        selected_row = selected_rows[0] if selected_rows else 0
 
-            st.markdown("---")
-            st.subheader(f"📈 History: {artist_name} - {song_title}")
+        song_title = df.iloc[selected_row]["title"]
+        artist_name = df.iloc[selected_row]["artist"]
 
-            # Fetch history
-            history_query = """
-                SELECT from_date, to_date, position 
-                FROM charts.uk_singles_prestreaming_raw 
-                WHERE artist = %s AND title = %s 
-                ORDER BY from_date
-            """
-            hist_df = pd.read_sql(history_query, conn, params=(artist_name, song_title))
+        st.markdown("---")
+        st.subheader(f"📈 History: {artist_name} - {song_title}")
 
-            if not hist_df.empty:
-                # Calculate Metrics
-                peak_pos = hist_df["position"].min()
-                weeks_on_chart = len(hist_df)
-                first_entry = hist_df["from_date"].iloc[0]
+        # Fetch history
+        history_query = """
+            SELECT from_date, to_date, position 
+            FROM charts.uk_singles_prestreaming_raw 
+            WHERE artist = ? AND title = ? 
+            ORDER BY from_date
+        """
+        hist_df = conn.execute(history_query, [artist_name, song_title]).df()
 
-                # Fetch Artwork
-                artwork_url = get_artwork_url(artist_name, song_title)
+        if not hist_df.empty:
+            # Calculate Metrics
+            peak_pos = hist_df["position"].min()
+            weeks_on_chart = len(hist_df)
+            first_entry = hist_df["from_date"].iloc[0]
 
-                # Render Details
-                render_song_details(
-                    artist_name,
-                    song_title,
-                    artwork_url,
-                    peak_pos,
-                    weeks_on_chart,
-                    first_entry,
-                )
+            # Set up layout
+            col_art, col_metrics = st.columns([1, 3])
 
-                # Plotly Chart
-                plot_song_chart(hist_df, f"Chart Run: {song_title}")
+            # 1. Render Metrics Immediately
+            with col_metrics:
+                render_metrics(peak_pos, weeks_on_chart, first_entry)
+
+            # 2. Render Chart Immediately
+            plot_song_chart(hist_df, f"Chart Run: {song_title}")
+
+            # 3. Fetch and Render Artwork (this happens last so UI is not blocked)
+            with col_art:
+                render_artwork(artist_name, song_title, get_artwork_url)

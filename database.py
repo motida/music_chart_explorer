@@ -41,12 +41,15 @@ def get_connection():
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
+        except (psycopg2.InterfaceError, psycopg2.OperationalError):
+            # Connection is closed or broken
+            force_reconnect = True
         except psycopg2.Error as e:
             # Check for "current transaction is aborted" (25P02)
             if e.pgcode == "25P02":
                 conn.rollback()
             else:
-                # For other errors (OperationalError, etc.), force reconnect
+                # For other errors, force reconnect
                 force_reconnect = True
 
     if force_reconnect:
