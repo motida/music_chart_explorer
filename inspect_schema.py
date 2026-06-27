@@ -1,52 +1,27 @@
-import os
-import psycopg2
+import duckdb
+from config import config
 
 
 def inspect_schema():
+    print(f"Inspecting DuckDB database at: {config.DUCKDB_PATH}")
     try:
-        conn = psycopg2.connect(
-            host=os.environ.get("POSTGRES_HOST", "localhost"),
-            port=os.environ.get("POSTGRES_PORT", "5432"),
-            user=os.environ.get("POSTGRES_USER", "postgres"),
-            password=os.environ.get("POSTGRES_PASSWORD", ""),
-            dbname=os.environ.get("POSTGRES_DATABASE", "musiccharts"),
-        )
-        cur = conn.cursor()
+        conn = duckdb.connect(config.DUCKDB_PATH, read_only=True)
+        tables = conn.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'charts'"
+        ).fetchall()
+        print("\\nTables in schema 'charts':")
+        for table in tables:
+            print(f"- {table[0]}")
 
-        print("--- Listing all relations in schema 'charts' ---")
-        cur.execute("""
-            SELECT table_name, table_type 
-            FROM information_schema.tables 
-            WHERE table_schema = 'charts'
-        """)
-        rows = cur.fetchall()
-        for row in rows:
-            print(f"{row[0]} ({row[1]})")
-
-        print("\n--- Listing materialized views in schema 'charts' ---")
-        cur.execute("""
-            SELECT matviewname 
-            FROM pg_matviews 
-            WHERE schemaname = 'charts'
-        """)
-        rows = cur.fetchall()
-        for row in rows:
-            print(f"{row[0]}")
-
-        # Specifically check our target view
-        print("\n--- Columns for charts.uk_singles_prestreaming_scored ---")
-        try:
-            cur.execute("SELECT * FROM charts.uk_singles_prestreaming_scored LIMIT 0")
-            for desc in cur.description:
-                print(f"{desc.name}")
-        except Exception as e:
-            print(f"Error: {e}")
-
-        cur.close()
-        conn.close()
+        columns = conn.execute(
+            "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'charts' ORDER BY table_name, ordinal_position"
+        ).fetchall()
+        print("\\nColumns:")
+        for col in columns:
+            print(f"  {col[0]}.{col[1]} ({col[2]})")
 
     except Exception as e:
-        print(f"Error connecting to database: {e}")
+        print(f"Error connecting to DuckDB database: {e}")
 
 
 if __name__ == "__main__":

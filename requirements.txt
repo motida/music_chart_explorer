@@ -1,11 +1,7 @@
-streamlit
-psycopg2-binary
-pandas
-plotly
+duckdb
 openai
 python-dotenv
+fastapi
+uvicorn
+pydantic
 requests
-ruff
-pre-commit
-pytest
-pytest-mock

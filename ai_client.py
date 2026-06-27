@@ -1,11 +1,10 @@
-import os
 import logging
 import re
 from openai import OpenAI
+from config import config
 
 # Configure logging
 logging.basicConfig(
-    filename="sql_generation.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
@@ -26,17 +25,17 @@ def get_sql_from_llm(
                              If it returns (False, error), the LLM is prompted to retry.
         max_retries: Number of retry attempts.
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "")
+    api_key = config.OPENAI_API_KEY
     if not api_key:
         raise ValueError("OPENAI_API_KEY not found in environment variables.")
-    base_url = os.environ.get("OPENAI_BASE_URL")
+    base_url = config.OPENAI_BASE_URL
     client = OpenAI(api_key=api_key, base_url=base_url)
 
     # Allow overriding max_retries via env var
-    max_retries = int(os.environ.get("SQL_MAX_RETRIES", max_retries))
+    max_retries = config.SQL_MAX_RETRIES
 
     system_prompt = f"""
-    You are a PostgreSQL expert. Convert the user's natural language question into a valid SQL query.
+    You are a DuckDB expert. Convert the user's natural language question into a valid SQL query.
     
     Context:
     {schema_context}
@@ -61,7 +60,7 @@ def get_sql_from_llm(
 
     for attempt in range(max_retries):
         response = client.chat.completions.create(
-            model=os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo"),
+            model=config.OPENAI_MODEL,
             messages=messages,
             temperature=0,
         )

@@ -1,16 +1,15 @@
 import requests
-import streamlit as st
 import time
 import logging
+import functools
+from config import config
 
 # User Agent is required by MusicBrainz API
 # See: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
-USER_AGENT = "MusicChartExplorer/1.0 ( motigpt@example.com )"
+USER_AGENT = config.USER_AGENT
 
 
-@st.cache_data(
-    show_spinner=False, ttl=3600 * 24 * 7
-)  # Increased TTL, invalidates previous cache
+@functools.lru_cache(maxsize=100)
 def get_artwork_url(artist: str, title: str) -> str:
     """
     Fetches the URL of the album artwork for a given artist and song title

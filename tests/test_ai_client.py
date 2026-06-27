@@ -103,3 +103,41 @@ def test_get_sql_max_retries_exceeded(mock_openai_client):
         )
 
     assert "Failed to generate valid SQL" in str(excinfo.value)
+
+
+def test_get_sql_no_markdown_extraction(mock_openai_client):
+    """Test extraction when LLM returns SQL without any markdown."""
+    mock_instance = mock_openai_client.return_value
+    mock_instance.chat.completions.create.return_value.choices[
+        0
+    ].message.content = "SELECT title FROM charts WHERE year = 1980;"
+
+    sql = get_sql_from_llm("test question", "schema", 10)
+    assert sql == "SELECT title FROM charts WHERE year = 1980;"
+
+
+def test_get_sql_with_leading_sql_text(mock_openai_client):
+    """Test extraction when LLM returns sql string before the actual query."""
+    mock_instance = mock_openai_client.return_value
+    mock_instance.chat.completions.create.return_value.choices[
+        0
+    ].message.content = "sql\nSELECT title FROM charts;"
+
+    sql = get_sql_from_llm("test question", "schema", 10)
+    assert sql == "SELECT title FROM charts;"
+
+
+def test_get_sql_with_unspecified_codeblock(mock_openai_client):
+    """Test extraction from markdown code block without 'sql' specified."""
+    mock_instance = mock_openai_client.return_value
+    content = """
+    ```
+    SELECT * FROM my_table;
+    ```
+    """
+    mock_instance.chat.completions.create.return_value.choices[
+        0
+    ].message.content = content
+
+    sql = get_sql_from_llm("test question", "schema", 10)
+    assert sql == "SELECT * FROM my_table;"

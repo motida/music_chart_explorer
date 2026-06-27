@@ -1,3 +1,19 @@
+[project]
+name = "music-chart-explorer"
+version = "0.1.0"
+description = "Music Chart Explorer API"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "duckdb",
+    "openai",
+    "python-dotenv",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "requests"
+]
+
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [

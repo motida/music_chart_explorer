@@ -5,6 +5,7 @@ from artwork_client import (
     _search_musicbrainz_candidates,
     _get_cover_art_archive_url,
 )
+import requests
 
 
 @pytest.fixture
@@ -86,3 +87,36 @@ def test_get_artwork_url_integration(mock_requests_get, mock_requests_head):
 
     url = get_artwork_url("Artist", "Title")
     assert url == "https://coverartarchive.org/release-group/mbid_test/front-500"
+
+
+def test_search_release_group_retry_logic(mock_requests_get):
+    """Test MusicBrainz retry logic on RequestException."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "release-groups": [
+            {"id": "mbid_success", "primary-type": "Single", "score": 100}
+        ]
+    }
+
+    mock_requests_get.side_effect = [
+        requests.RequestException("Connection Reset"),
+        mock_response,
+    ]
+
+    candidates = _search_musicbrainz_candidates("Artist", "Song")
+    assert candidates == ["mbid_success"]
+    assert mock_requests_get.call_count == 2
+
+
+def test_get_artwork_empty_inputs():
+    """Test that empty artist or title returns None immediately."""
+    assert get_artwork_url("", "Song") is None
+    assert get_artwork_url("Artist", "") is None
+    assert get_artwork_url(None, None) is None
+
+
+def test_get_cover_art_url_exceptions(mock_requests_head):
+    """Test that exceptions during head request are caught and we return None if all fail."""
+    mock_requests_head.side_effect = requests.RequestException("Timeout")
+    url = _get_cover_art_archive_url("fake_mbid")
+    assert url is None

@@ -28,8 +28,9 @@ Create a `.env` file in the project root with the following keys:
 OPENAI_API_KEY=your_openai_api_key
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_password
+# Use a read-only user for the app to prevent malicious LLM queries
+POSTGRES_USER=chart_reader
+POSTGRES_PASSWORD=chart_reader_password123
 POSTGRES_DATABASE=musiccharts
 ```
 
@@ -57,6 +58,11 @@ streamlit run main.py
 The application will typically be accessible at `http://localhost:8501`.
 
 ## Database Management Scripts
+
+*   **`setup_readonly_user.py`**: Creates a read-only database user (`chart_reader`) restricted to the `charts` schema. Run this script using admin credentials in your `.env` before running the app for improved security.
+    ```bash
+    python setup_readonly_user.py
+    ```
 
 *   **`inspect_schema.py`**: Connects to the database and lists all tables and materialized views within the `charts` schema. Useful for verifying the database structure.
     ```bash

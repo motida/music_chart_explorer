@@ -1,5 +1,6 @@
 # Environments
 .env
+.env.bak
 .venv/
 env/
 venv/
@@ -14,3 +15,16 @@ __pycache__/
 .DS_Store
 Thumbs.db
 sql_generation.log
+.vercel
+
+# Node
+node_modules/
+dist/
+
+# DB and Temp
+musiccharts.duckdb
+events.json
+events2.json
+.vercel_python_packages/
+.python-version
+uv.lock

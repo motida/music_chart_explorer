@@ -1,60 +1,16 @@
-import os
-import psycopg2
+import duckdb
 import streamlit as st
+from config import config
 
 
 @st.cache_resource(show_spinner=False)
-def _create_connection():
-    try:
-        password = os.environ.get("POSTGRES_PASSWORD", "")
-        if not password:
-            raise ValueError("POSTGRES_PASSWORD not found in environment variables.")
-        conn = psycopg2.connect(
-            host=os.environ.get("POSTGRES_HOST", "localhost"),
-            port=os.environ.get("POSTGRES_PORT", "5432"),
-            user=os.environ.get("POSTGRES_USER", "postgres"),
-            password=password,
-            dbname=os.environ.get("POSTGRES_DATABASE", "musiccharts"),
-            sslmode=os.environ.get(
-                "POSTGRES_SSLMODE", "prefer"
-            ),  # Default to 'prefer' for local compatibility, 'require' for prod
-        )
-        return conn
-    except Exception as e:
-        st.error(f"Failed to connect to database: {e}")
-        return None
-
-
 def get_connection():
     """
-    Retrieves a robust database connection, automatically reconnecting if the
-    cached connection is dead.
+    Retrieves a read-only connection to the local DuckDB database.
     """
-    conn = _create_connection()
-
-    # Check if connection is None (failed initially) or closed
-    force_reconnect = False
-    if conn is None or conn.closed != 0:
-        force_reconnect = True
-    else:
-        # Deep check: Try executing a simple query
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
-        except (psycopg2.InterfaceError, psycopg2.OperationalError):
-            # Connection is closed or broken
-            force_reconnect = True
-        except psycopg2.Error as e:
-            # Check for "current transaction is aborted" (25P02)
-            if e.pgcode == "25P02":
-                conn.rollback()
-            else:
-                # For other errors, force reconnect
-                force_reconnect = True
-
-    if force_reconnect:
-        # Clear cache and retry
-        _create_connection.clear()
-        conn = _create_connection()
-
-    return conn
+    try:
+        conn = duckdb.connect(config.DUCKDB_PATH, read_only=True)
+        return conn
+    except Exception as e:
+        st.error(f"Failed to connect to DuckDB database: {e}")
+        return None

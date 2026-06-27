@@ -3,21 +3,30 @@ import pandas as pd
 import streamlit as st
 
 
-def render_song_details(
-    artist: str,
-    title: str,
-    artwork_url: str,
-    peak_pos: int,
-    weeks_on_chart: int,
-    first_entry: str,
-):
-    """
-    Renders the song details section including artwork and key metrics.
-    Uses Streamlit columns to organize layout.
-    """
-    col_art, col_metrics = st.columns([1, 3])  # Create a 1:3 ratio for columns
+def render_metrics(peak_pos: int, weeks_on_chart: int, first_entry: str):
+    """Renders the key metrics for a song."""
+    m1, m2, m3 = st.columns(3)
+    m1.metric(
+        "Peak Position",
+        f"#{peak_pos}",
+        help="Best position reached on the chart.",
+    )
+    m2.metric(
+        "Weeks on Chart",
+        f"{weeks_on_chart}",
+        help="Total number of weeks the song appeared in the top 100.",
+    )
+    m3.metric(
+        "First Entry",
+        f"{first_entry}",
+        help="The date the song first entered the chart.",
+    )
 
-    with col_art:
+
+def render_artwork(artist: str, title: str, fetch_callback):
+    """Fetches and renders the artwork with a loading spinner."""
+    with st.spinner("Loading artwork..."):
+        artwork_url = fetch_callback(artist, title)
         if artwork_url:
             st.image(
                 artwork_url,
@@ -25,27 +34,7 @@ def render_song_details(
                 use_container_width=True,
             )
         else:
-            # Display a placeholder if no artwork is available
             st.info("No artwork found")
-
-    with col_metrics:
-        # Create three columns for the metrics
-        m1, m2, m3 = st.columns(3)
-        m1.metric(
-            "Peak Position",
-            f"#{peak_pos}",
-            help="Best position reached on the chart.",
-        )
-        m2.metric(
-            "Weeks on Chart",
-            f"{weeks_on_chart}",
-            help="Total number of weeks the song appeared in the top 100.",
-        )
-        m3.metric(
-            "First Entry",
-            f"{first_entry}",
-            help="The date the song first entered the chart.",
-        )
 
 
 def plot_song_chart(hist_df: pd.DataFrame, title: str) -> None:
